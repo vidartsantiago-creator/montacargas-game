@@ -100,6 +100,7 @@ class MiEscena extends Phaser.Scene {
         this.despachoGraphics = this.add.graphics();
         this.cajasGraphics = [];
         this.cajasAcopiadasGraphics = [];
+        this.estanteriasGraphics = [];  // 🔧 Nuevo array para estanterías individuales
         this.jugadorGraphics = this.add.graphics();
         this.iaGraphics = this.add.graphics();
         this.resaltadoIA = this.add.graphics();
@@ -175,9 +176,17 @@ class MiEscena extends Phaser.Scene {
         this.mapaGraphics.clear();
         this.objetivosGraphics.clear();
         
+        // 🔧 Limpiar estanterías anteriores para evitar memory leaks
+        if (this.estanteriasGraphics) {
+            this.estanteriasGraphics.forEach(g => g.destroy());
+        }
+        
         const numRows = this.mapa.length;
         const numCols = this.mapa[0].length;
         const orden = getDrawingOrder(numRows, numCols, this.tileSize);
+        
+        // 🔧 REFACTORIZACIÓN: Graphics individuales por estantería para depth dinámico
+        this.estanteriasGraphics = [];
         
         for (const { row, col } of orden) {
             const tile = this.mapa[row][col];
@@ -204,9 +213,16 @@ class MiEscena extends Phaser.Scene {
                     drawIsoSolidWall(this.mapaGraphics, row, col, this.tileSize, 
                                     this.offsetX, this.offsetY, 55);
                 } else {
-                    // Pared interior: estantería modular transparente
-                    drawIsoShelf(this.mapaGraphics, row, col, this.tileSize, 
+                    // 🔧 ESTANTERÍA INTERIOR con graphics individual para depth dinámico
+                    const estanteriaGraphics = this.add.graphics();
+                    this.estanteriasGraphics.push(estanteriaGraphics);
+                    
+                    drawIsoShelf(estanteriaGraphics, row, col, this.tileSize, 
                                 this.offsetX, this.offsetY, 65);
+                    
+                    // 🔧 DEPTH DINÁMICO para estanterías (detrás del suelo)
+                    const { y } = toIso(row, col, this.tileSize);
+                    estanteriaGraphics.setDepth(y + this.offsetY - 65);
                 }
             }
         }
@@ -240,6 +256,13 @@ class MiEscena extends Phaser.Scene {
         
         drawIsoShelfBox(graphics, est.row, est.col, this.tileSize, 
                     this.offsetX, this.offsetY, nivel, color);
+        
+        // 🔧 DEPTH DINÁMICO: y de pantalla - altura del nivel en estantería
+        const { y } = toIso(est.row, est.col, this.tileSize);
+        const shelfHeight = 65;
+        const numShelves = 3;
+        const alturaCaja = (shelfHeight / numShelves) * nivel;
+        graphics.setDepth(y + this.offsetY - alturaCaja);
     }
 
     dibujarCajasDecorativas() {
@@ -251,6 +274,13 @@ class MiEscena extends Phaser.Scene {
             
             drawIsoShelfBox(graphics, cajaDec.row, cajaDec.col, this.tileSize, 
                         this.offsetX, this.offsetY, cajaDec.nivel, 0x886644);
+            
+            // 🔧 DEPTH DINÁMICO para decorativas
+            const { y } = toIso(cajaDec.row, cajaDec.col, this.tileSize);
+            const shelfHeight = 65;
+            const numShelves = 3;
+            const alturaCaja = (shelfHeight / numShelves) * cajaDec.nivel;
+            graphics.setDepth(y + this.offsetY - alturaCaja);
         });
     }
 
@@ -262,6 +292,12 @@ class MiEscena extends Phaser.Scene {
             const graphics = this.add.graphics();
             this.cajasAcopiadasGraphics.push(graphics);
             this.dibujarCajaIndividual(caja, graphics, 0x6666cc);
+            
+            // 🔧 DEPTH DINÁMICO para cajas acopiadas de la IA
+            if (!caja.despachada && !caja.recogidaPorIA) {
+                const { y } = toIso(caja.row, caja.col, this.tileSize);
+                graphics.setDepth(y + this.offsetY);
+            }
         });
     }
 
@@ -273,6 +309,10 @@ class MiEscena extends Phaser.Scene {
         }
         graphics.setVisible(true);
         drawIsoBox(graphics, caja.row, caja.col, this.tileSize, this.offsetX, this.offsetY, color);
+        
+        // 🔧 DEPTH DINÁMICO para cajas en piso (sin ajuste de altura)
+        const { y } = toIso(caja.row, caja.col, this.tileSize);
+        graphics.setDepth(y + this.offsetY);
     }
 
     dibujarMontacargas() {
